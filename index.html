@@ -2,96 +2,140 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistem Kontrol Teachable Machine</title>
+    <title>AI Security Dashboard</title>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #f4f4f9; padding: 20px; }
-        #webcam-container { margin: 20px auto; border: 5px solid #333; border-radius: 10px; width: max-content; }
-        #label-container { font-size: 24px; font-weight: bold; margin-top: 20px; color: #2c3e50; }
-        .status-card { padding: 20px; background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: inline-block; min-width: 300px; }
-        .action { color: #e74c3c; font-style: italic; }
+        :root { --primary: #2563eb; --danger: #dc2626; --success: #16a34a; --bg: #0f172a; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: white; margin: 0; display: flex; height: 100vh; }
+        .sidebar { width: 350px; background: #1e293b; padding: 20px; border-right: 1px solid #334155; display: flex; flex-direction: column; }
+        .main-content { flex: 1; padding: 40px; display: flex; flex-direction: column; align-items: center; }
+        
+        #webcam-container { border-radius: 12px; overflow: hidden; border: 4px solid #334155; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); }
+        #webcam-container canvas { width: 100% !important; height: auto !important; }
+
+        .control-panel { width: 100%; margin-top: 20px; }
+        .status-item { 
+            background: #334155; padding: 15px; border-radius: 8px; margin-bottom: 10px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 20px; }
+        input:checked + .slider { background-color: var(--primary); }
+
+        .log-box { width: 100%; max-width: 600px; background: #000; padding: 15px; border-radius: 8px; font-family: monospace; color: #10b981; margin-top: 20px; height: 100px; overflow-y: auto; }
+        .btn-connect { background: var(--success); color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 20px; }
     </style>
 </head>
 <body>
 
-    <h2>AI Smart Control System</h2>
-    <div class="status-card">
-        <button type="button" onclick="init()">Mulai Kamera</button>
-        <div id="webcam-container"></div>
-        <div id="label-container">Menunggu kamera...</div>
-        <p id="action-msg" class="action"></p>
+<div class="sidebar">
+    <h2>Control Panel</h2>
+    <button class="btn-connect" onclick="connectSerial()">🔌 Hubungkan Arduino</button>
+    
+    <div class="control-panel">
+        <div class="status-item">
+            <span>Fitur: Buka Pintu</span>
+            <label class="switch"><input type="checkbox" id="toggle-pintu" checked><span class="slider"></span></label>
+        </div>
+        <div class="status-item">
+            <span>Fitur: Nyala Lampu</span>
+            <label class="switch"><input type="checkbox" id="toggle-lampu" checked><span class="slider"></span></label>
+        </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+    <div id="label-container" style="font-size: 1.5rem; margin-top: 20px; color: #60a5fa;">Menunggu AI...</div>
+    <div id="log" class="log-box">Sistem siap...</div>
+</div>
 
-    <script type="text/javascript">
-        // Ganti URL ini dengan link model yang Anda dapatkan dari Teachable Machine
-        const URL = "https://teachablemachine.withgoogle.com/models/1TcxLgfyoh/";
+<div class="main-content">
+    <h1>Smart Eye Recognition</h1>
+    <div id="webcam-container"></div>
+    <button onclick="init()" style="margin-top: 20px; padding: 10px 30px;">Aktifkan Kamera</button>
+</div>
 
-        let model, webcam, labelContainer, maxPredictions;
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
 
-        async function init() {
-            const modelURL = URL + "model.json";
-            const metadataURL = URL + "metadata.json";
+<script>
+    const URL = "https://teachablemachine.withgoogle.com/models/1TcxLgfyoh/"; 
+    let model, webcam, maxPredictions, port, writer;
+    let isOwnerDetected = false;
 
-            model = await tmImage.load(modelURL, metadataURL);
-            maxPredictions = model.getTotalClasses();
+    async function connectSerial() {
+        try {
+            port = await navigator.serial.requestPort();
+            await port.open({ baudRate: 9600 });
+            writer = port.writable.getWriter();
+            addLog("Arduino Terhubung!");
+        } catch (err) {
+            addLog("Gagal terhubung Serial");
+        }
+    }
 
-            const flip = true; 
-            webcam = new tmImage.Webcam(300, 300, flip); 
-            await webcam.setup(); 
-            await webcam.play();
-            window.requestAnimationFrame(loop);
+    async function init() {
+        model = await tmImage.load(URL + "model.json", URL + "metadata.json");
+        maxPredictions = model.getTotalClasses();
+        webcam = new tmImage.Webcam(400, 400, true);
+        await webcam.setup();
+        await webcam.play();
+        window.requestAnimationFrame(loop);
+        document.getElementById("webcam-container").appendChild(webcam.canvas);
+    }
 
-            document.getElementById("webcam-container").appendChild(webcam.canvas);
-            labelContainer = document.getElementById("label-container");
+    async function loop() {
+        webcam.update();
+        await predict();
+        window.requestAnimationFrame(loop);
+    }
+
+    async function sendToArduino(command) {
+        if (writer) {
+            const data = new TextEncoder().encode(command + "\n");
+            await writer.write(data);
+        }
+    }
+
+    function addLog(msg) {
+        const log = document.getElementById("log");
+        log.innerHTML = `> ${msg}<br>` + log.innerHTML;
+    }
+
+    async function predict() {
+        const prediction = await model.predict(webcam.canvas);
+        let bestMatch = "";
+        let highProb = 0;
+
+        for (let i = 0; i < maxPredictions; i++) {
+            if(prediction[i].probability > 0.85) {
+                bestMatch = prediction[i].className;
+                highProb = prediction[i].probability;
+            }
         }
 
-        async function loop() {
-            webcam.update();
-            await predict();
-            window.requestAnimationFrame(loop);
-        }
-
-        async function predict() {
-            const prediction = await model.predict(webcam.canvas);
+        if(bestMatch !== "") {
+            document.getElementById("label-container").innerText = bestMatch;
             
-            // Mencari hasil prediksi dengan probabilitas tertinggi
-            let highestProb = 0;
-            let bestMatch = "";
-
-            for (let i = 0; i < maxPredictions; i++) {
-                if (prediction[i].probability > highestProb) {
-                    highestProb = prediction[i].probability;
-                    bestMatch = prediction[i].className;
-                }
+            // LOGIKA IZIN AKSES: Harus 'Pemilik' dulu
+            if(bestMatch === "Pemilik") {
+                isOwnerDetected = true;
+                addLog("Akses Terverifikasi: Pemilik");
             }
 
-            // Logika Respon Berdasarkan Kelas Anda
-            const msg = document.getElementById("action-msg");
-            labelContainer.innerHTML = "Terdeteksi: " + bestMatch;
-
-            switch(bestMatch) {
-                case "Pemilik":
-                    msg.innerHTML = "Selamat Datang, Bos!";
-                    break;
-                case "Membuka Pintu":
-                    msg.innerHTML = "🔓 Akses Diberikan: Pintu Terbuka";
-                    break;
-                case "Menyalakan Lampu":
-                    msg.innerHTML = "💡 Perintah Diterima: Lampu Menyala";
-                    break;
-                case "Orang Lain":
-                    msg.innerHTML = "⚠️ Peringatan: Akses Ditolak!";
-                    break;
-                case "Kosong":
-                    msg.innerHTML = "Menunggu subjek...";
-                    break;
-                default:
-                    msg.innerHTML = "";
+            if(isOwnerDetected) {
+                if(bestMatch === "Membuka Pintu" && document.getElementById("toggle-pintu").checked) {
+                    addLog("Mengirim sinyal: Buka Pintu");
+                    sendToArduino("OPEN");
+                } 
+                else if(bestMatch === "Menyalakan Lampu" && document.getElementById("toggle-lampu").checked) {
+                    addLog("Mengirim sinyal: Lampu ON");
+                    sendToArduino("LIGHT_ON");
+                }
+            } else if (bestMatch === "Orang Lain") {
+                addLog("⚠️ Akses Ditolak: Bukan Pemilik");
+                sendToArduino("ALARM");
             }
         }
-    </script>
+    }
+</script>
 </body>
 </html>
