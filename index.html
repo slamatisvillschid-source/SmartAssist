@@ -2,87 +2,85 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <title>Smart Assistive Door & Energy System</title>
+  <title>Smart Assistive Door - Camera Fix</title>
   
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.5.0/p5.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
   <script src="https://unpkg.com/ml5@latest/dist/ml5.min.js"></script>
   <script src="https://unpkg.com/p5.webserial/dist/p5.webserial.js"></script>
 
   <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f4f9; color: #333; text-align: center; }
-    h1 { color: #2c3e50; margin-bottom: 10px; }
+    body { font-family: sans-serif; background: #f0f2f5; text-align: center; color: #333; }
+    h1 { margin-bottom: 5px; color: #2c3e50; }
     
-    .container {
-      display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; padding: 20px;
+    .container { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; padding: 20px; }
+    
+    .video-wrapper {
+      position: relative;
+      width: 320px; height: 240px;
+      background: #000;
+      border-radius: 10px; overflow: hidden;
+      border: 4px solid #333;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      display: flex; align-items: center; justify-content: center;
     }
     
-    /* Area Video */
-    .video-section {
-      display: flex; flex-direction: column; align-items: center; gap: 10px;
-    }
-    .video-box {
-      border: 5px solid #ccc; border-radius: 10px; overflow: hidden;
-      box-shadow: 0 4px 8px rgba(0,0,0,0.1); width: 320px; height: 240px; background: #000;
-      display: flex; align-items: center; justify-content: center; color: white;
-    }
-
+    /* Agar canvas p5.js pas di tengah */
+    #canvas-container canvas { display: block; }
+    
     .panel {
       background: white; padding: 20px; border-radius: 10px; width: 300px;
-      box-shadow: 0 4px 8px rgba(0,0,0,0.1); text-align: left;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: left;
     }
 
-    .status-active { color: green; font-weight: bold; }
-    .status-inactive { color: red; font-weight: bold; }
-    
-    button {
-      width: 100%; padding: 10px; margin-top: 10px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; transition: 0.3s;
-    }
-    .btn-cam { background-color: #8e44ad; color: white; font-weight: bold; }
-    .btn-connect { background-color: #3498db; color: white; }
-    .btn-connect:disabled { background-color: #bdc3c7; cursor: not-allowed; }
-    .btn-stop { background-color: #e74c3c; color: white; }
+    button { width: 100%; padding: 12px; margin-top: 10px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; }
+    .btn-cam { background: #8e44ad; color: white; }
+    .btn-connect { background: #2980b9; color: white; }
+    .btn-connect:disabled { background: #bdc3c7; cursor: not-allowed; }
+    .btn-stop { background: #c0392b; color: white; }
 
-    #alarm-msg { display: none; background: #e74c3c; color: white; padding: 10px; margin-top: 10px; border-radius: 5px; animation: blink 1s infinite; }
+    .status-text { font-size: 18px; font-weight: bold; color: #2c3e50; }
+    .active { color: #27ae60; }
+    .inactive { color: #c0392b; }
     
-    @keyframes blink { 50% { opacity: 0.5; } }
+    #alarm-banner {
+      display: none; background: #e74c3c; color: white; padding: 10px; 
+      margin: 10px auto; width: 80%; border-radius: 5px; animation: pulse 1s infinite;
+    }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
   </style>
 </head>
 
 <body>
 
-  <h1>Smart Assistive Door & Energy System</h1>
+  <h1>Smart Assistive System</h1>
+  <div id="alarm-banner">⚠️ PERINGATAN: PENYUSUP TERDETEKSI! ⚠️</div>
   <audio id="alarmSound" src="https://actions.google.com/sounds/v1/alarms/mechanic_clock_ring.ogg"></audio>
-  <div id="alarm-msg">⚠️ PERINGATAN: PENYUSUP TERDETEKSI! ⚠️</div>
 
   <div class="container">
     
-    <div class="video-section">
-      <button id="btn-start-cam" class="btn-cam" onclick="startCamera()">📷 Aktifkan Kamera</button>
-      
-      <div id="canvas-container" class="video-box">
-        </div>
-      <p>Status AI: <b id="model-status">Menunggu Kamera...</b></p>
+    <div style="display: flex; flex-direction: column; align-items: center;">
+      <button id="btn-cam" class="btn-cam" onclick="startCamera()">📷 AKTIFKAN KAMERA</button>
+      <br>
+      <div id="canvas-container" class="video-wrapper">
+        <p id="loading-text" style="color:white; position:absolute;">Menunggu Tombol...</p>
+      </div>
+      <p>Status AI: <span id="ai-status">Off</span></p>
     </div>
 
     <div class="panel">
-      <h3>Sistem Kontrol</h3>
-      <p>Deteksi: <b id="label-display" style="font-size: 1.2em; color:blue;">-</b></p>
-      <p>Akses: <span id="access-status">🔒 Terkunci</span></p>
-      
-      <button id="btn-connect" class="btn-connect" onclick="connectSerial()" disabled>
-        🔌 Hubungkan Arduino
-      </button>
-      <p style="font-size: 12px; color: gray;">*Aktifkan kamera & tunjukkan wajah Pemilik untuk membuka akses.</p>
+      <h3>Kontrol Akses</h3>
+      <p>Deteksi: <b id="label-result" style="color:blue; font-size:1.4em;">-</b></p>
+      <button id="btn-connect" class="btn-connect" onclick="connectSerial()" disabled>🔌 Hubungkan Arduino</button>
+      <p style="font-size: 0.8em; color: gray;">*Tombol aktif jika 'Pemilik' terdeteksi.</p>
     </div>
 
     <div class="panel">
-      <h3>Status Perangkat</h3>
-      <p>🚪 Pintu: <span id="door-status" class="status-inactive">TERTUTUP</span></p>
-      <p>💡 Lampu (4 Unit): <span id="light-status" class="status-inactive">MATI</span></p>
+      <h3>Monitoring Energi</h3>
+      <p>Pintu: <b id="door-st" class="inactive">TERTUTUP</b></p>
+      <p>Lampu: <b id="light-st" class="inactive">MATI</b></p>
       <hr>
-      <p>⏱️ Durasi Nyala: <b id="duration-txt">0 detik</b></p>
-      <p>⚡ Estimasi Biaya: Rp <b id="cost-txt">0</b></p>
-      
+      <p>Durasi: <span id="time-st">0</span> detik</p>
+      <p>Biaya: Rp <span id="cost-st">0</span></p>
       <button class="btn-stop" onclick="stopSystem()">🛑 Stop & Kirim Laporan</button>
     </div>
   </div>
@@ -91,197 +89,174 @@
   // --- KONFIGURASI ---
   const BOT_TOKEN = "8227143038:AAH6f9KMkD7GU3ZVAfl3E0y2zYG51LyUYTo";
   const CHAT_ID = "275146230";
-  // GANTI LINK MODEL DI BAWAH INI
+  
+  // !!! GANTI DENGAN LINK MODEL ANDA !!!
   let imageModelURL = 'https://teachablemachine.withgoogle.com/models/1TcxLgfyoh/';
 
   // --- VARIABEL ---
-  let classifier, video, flippedVideo;
-  let label = "-";
+  let classifier, video;
+  let label = "Menunggu...";
   let serial;
   
-  // Flag Status
-  let isCameraActive = false; 
-  let isModelReady = false;
-  let isOwnerIdentified = false;
-  let isArduinoConnected = false;
-  let isSystemRunning = true;
+  // Flag
+  let cameraActive = false;
+  let arduinoReady = false;
+  let systemRunning = true;
 
-  // Status Perangkat
+  // Logic Variables
   let isLightOn = false;
   let isDoorOpen = false;
-  
-  // Timer & Logic
   let doorTimer = 0;
-  let intruderCooldown = 0; 
-  let emptyRoomTimer = 0;
-  let lightStartTime = 0;
-  let accumulatedTime = 0; 
+  let emptyTimer = 0;
+  let intruderTimer = 0;
   
-  const WATT_PER_LAMPU = 10; 
-  const JUMLAH_LAMPU = 4;
-  const TARIF_LISTRIK = 1444; 
+  // Energy
+  let lightStart = 0;
+  let totalSeconds = 0;
+  const WATT = 40; // 4 lampu x 10 watt
+  const TARIF = 1444;
 
   function preload() {
-    // Load model di awal, tapi kamera nanti
     classifier = ml5.imageClassifier(imageModelURL + 'model.json', () => {
       console.log("Model Loaded!");
+      document.getElementById('ai-status').innerText = "Model Siap via Cloud";
     });
   }
 
   function setup() {
-    // Membuat canvas tapi belum memulai capture video
+    // Membuat canvas seukuran video standar
     let cnv = createCanvas(320, 240);
     cnv.parent('canvas-container');
-    background(0); // Layar hitam awal
-    fill(255); textAlign(CENTER); textSize(14);
-    text("Tekan 'Aktifkan Kamera'", 160, 120);
-
+    background(20); // Layar gelap
+    
     // Setup Serial
     serial = new p5.WebSerial();
     serial.on('portopen', () => {
+      arduinoReady = true;
       alert("Arduino Terhubung!");
-      isArduinoConnected = true;
-      document.getElementById('access-status').innerHTML = "🔓 TERHUBUNG";
-      document.getElementById('btn-connect').style.backgroundColor = "green";
-      document.getElementById('btn-connect').innerText = "Sudah Terhubung";
+      document.getElementById('btn-connect').innerText = "✅ Arduino Terhubung";
+      document.getElementById('btn-connect').style.background = "#27ae60";
     });
   }
 
-  // --- FUNGSI BARU: AKTIFKAN KAMERA ---
   function startCamera() {
-    if(isCameraActive) return; // Mencegah klik ganda
+    // Cek Keamanan Browser
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+      alert("⚠️ ERROR KAMERA: Browser memblokir kamera karena tidak menggunakan HTTPS. Silakan gunakan Localhost atau upload ke server HTTPS.");
+    }
+
+    document.getElementById('loading-text').innerText = "Memuat Video...";
     
-    document.getElementById('model-status').innerText = "Menyiapkan Video...";
+    // Inisialisasi Video
+    video = createCapture(VIDEO, () => {
+      console.log("Kamera Berhasil Diakses");
+      document.getElementById('loading-text').style.display = 'none';
+      cameraActive = true;
+      classifyVideo();
+    });
     
-    video = createCapture(VIDEO);
     video.size(320, 240);
-    video.hide();
+    video.hide(); // Sembunyikan elemen HTML video asli, kita gambar di canvas
     
-    isCameraActive = true;
-    document.getElementById('btn-start-cam').style.display = 'none'; // Sembunyikan tombol setelah aktif
-    
-    // Mulai klasifikasi
-    classifyVideo();
+    document.getElementById('btn-cam').style.display = 'none';
+    document.getElementById('ai-status').innerText = "Mendeteksi...";
   }
 
   function draw() {
-    // Hanya menggambar video jika kamera sudah aktif & sistem berjalan
-    if (isSystemRunning && isCameraActive && video) {
-      background(0);
-      
-      // Pastikan video sudah siap dirender
-      if(video.loadedmetadata) {
-         image(flippedVideo, 0, 0);
-         logicSystem(); 
-      }
-    } 
+    background(0);
     
-    // Update Text Label UI
-    document.getElementById('label-display').innerText = label;
+    if (cameraActive && video.loadedmetadata) {
+      // TEKNIK MIRRORING MANUAL (Lebih Stabil)
+      push();
+      translate(width, 0);
+      scale(-1, 1);
+      image(video, 0, 0, width, height);
+      pop();
+      
+      if(systemRunning) logicBrain();
+    } else {
+      fill(255); textAlign(CENTER);
+      text("Kamera Belum Aktif", width/2, height/2);
+    }
+    
+    // Tampilkan label hasil deteksi
+    document.getElementById('label-result').innerText = label;
   }
 
-  // --- LOGIKA UTAMA ---
-  function logicSystem() {
-    
-    // 1. KEAMANAN (ALARM)
+  function logicBrain() {
+    // 1. KEAMANAN
     if (label === "Orang Lain") {
-      document.getElementById('alarm-msg').style.display = 'block';
-      let alarmAudio = document.getElementById("alarmSound");
-      alarmAudio.play();
-
-      if (millis() - intruderCooldown > 15000) {
-        sendTelegram("⚠️ PERINGATAN: Orang tidak dikenal terdeteksi!");
-        intruderCooldown = millis();
+      document.getElementById('alarm-banner').style.display = 'block';
+      document.getElementById('alarmSound').play();
+      if (millis() - intruderTimer > 15000) {
+        sendTelegram("⚠️ PERINGATAN: Penyusup terdeteksi di kamera!");
+        intruderTimer = millis();
       }
     } else {
-      document.getElementById('alarm-msg').style.display = 'none';
-      document.getElementById("alarmSound").pause();
+      document.getElementById('alarm-banner').style.display = 'none';
+      document.getElementById('alarmSound').pause();
     }
 
-    // 2. OTENTIKASI PEMILIK
-    if (label === "Pemilik") {
-      document.getElementById('model-status').innerText = "Sistem Aktif";
-      isOwnerIdentified = true;
-      if (!isArduinoConnected) {
-        document.getElementById('btn-connect').disabled = false;
-        document.getElementById('access-status').innerHTML = "✅ Pemilik Dikenali";
-      }
+    // 2. OTENTIKASI PEMILIK (Buka Kunci Tombol Arduino)
+    if (label === "Pemilik" && !arduinoReady) {
+      document.getElementById('btn-connect').disabled = false;
     }
 
-    // 3. KONTROL HARDWARE (Jika Arduino Konek)
-    if (isArduinoConnected) {
+    // 3. LOGIKA KONTROL (Hanya jika Arduino Connect)
+    if (arduinoReady) {
       
       // Buka Pintu
       if (label === "Membuka Pintu" && !isDoorOpen) {
         serial.write('O'); 
         isDoorOpen = true;
-        updateUI("door", true);
         doorTimer = millis();
+        updateUI();
       }
-
+      
       // Tutup Pintu Otomatis (5 detik)
       if (isDoorOpen && millis() - doorTimer > 5000) {
         serial.write('C'); 
         isDoorOpen = false;
-        updateUI("door", false);
+        updateUI();
       }
 
       // Nyalakan Lampu
       if (label === "Menyalakan Lampu" && !isLightOn) {
-        serial.write('L'); 
+        serial.write('L');
         isLightOn = true;
-        lightStartTime = millis(); 
-        updateUI("light", true);
+        lightStart = millis();
+        updateUI();
       }
 
       // Matikan Lampu (Kosong)
       if (label === "Kosong") {
-        emptyRoomTimer++;
-        if (emptyRoomTimer > 100 && isLightOn) { 
-          serial.write('D'); 
-          stopLightSession();
-          updateUI("light", false);
+        emptyTimer++;
+        if (emptyTimer > 100 && isLightOn) { // Delay buffer
+          serial.write('D');
+          addDuration();
+          isLightOn = false;
+          emptyTimer = 0;
+          updateUI();
         }
       } else {
-        emptyRoomTimer = 0; 
+        emptyTimer = 0;
       }
 
-      // Kalkulasi
+      // Update Kalkulasi Realtime
       if (isLightOn) {
-        let currentSessionSec = (millis() - lightStartTime) / 1000;
-        let totalSec = accumulatedTime + currentSessionSec;
-        updateEnergyCalc(totalSec);
+        let current = (millis() - lightStart) / 1000;
+        calculateCost(totalSeconds + current);
       }
     }
   }
 
-  // --- FUNGSI PENDUKUNG ---
-  function stopLightSession() {
-    isLightOn = false;
-    accumulatedTime += (millis() - lightStartTime) / 1000;
-  }
-
-  function updateEnergyCalc(seconds) {
-    let totalWatt = WATT_PER_LAMPU * JUMLAH_LAMPU;
-    let hours = seconds / 3600;
-    let kwh = (totalWatt * hours) / 1000;
-    let cost = kwh * TARIF_LISTRIK;
-
-    document.getElementById('duration-txt').innerText = seconds.toFixed(1) + " detik";
-    document.getElementById('cost-txt').innerText = Math.ceil(cost);
-  }
-
-  function updateUI(device, status) {
-    let el = document.getElementById(device + '-status');
-    el.innerText = status ? (device === 'door' ? "TERBUKA" : "MENYALA") : (device === 'door' ? "TERTUTUP" : "MATI");
-    el.className = status ? "status-active" : "status-inactive";
-  }
-
+  // --- FUNGSI KLASIFIKASI ---
   function classifyVideo() {
-    if(video) {
-        flippedVideo = ml5.flipImage(video);
-        classifier.classify(flippedVideo, gotResult);
-    }
+    // Teachable Machine biasanya dilatih dengan gambar flip/mirror
+    // Kita flip dulu sebelum dikirim ke AI
+    // NOTE: ml5.flipImage kadang berat, kita kirim raw video saja jika model dilatih tanpa mirror,
+    // tapi biasanya TM menghandle ini. Kita coba kirim video langsung.
+    classifier.classify(video, gotResult);
   }
 
   function gotResult(error, results) {
@@ -290,35 +265,49 @@
     classifyVideo();
   }
 
+  // --- HELPER FUNCTIONS ---
   function connectSerial() {
-    if (!navigator.serial) { alert("Browser tidak support Serial API."); return;}
+    if (!navigator.serial) return alert("Gunakan browser Chrome/Edge!");
     serial.requestPort();
   }
 
-  function stopSystem() {
-    isSystemRunning = false;
-    if(isLightOn) stopLightSession();
-    
-    let finalDur = document.getElementById('duration-txt').innerText;
-    let finalCost = document.getElementById('cost-txt').innerText;
-
-    let reportMsg = `📊 LAPORAN AKHIR%0A` +
-                    `🕒 Durasi: ${finalDur}%0A` +
-                    `💰 Biaya: Rp ${finalCost}%0A` +
-                    `Sistem Dimatikan.`;
-    
-    sendTelegram(reportMsg);
-    alert("Sistem Stop. Laporan Terkirim.");
-    
-    if(isArduinoConnected) {
-      serial.write('C'); 
-      serial.write('D'); 
-    }
+  function addDuration() {
+    totalSeconds += (millis() - lightStart) / 1000;
   }
 
-  function sendTelegram(text) {
-    let url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${text}`;
-    fetch(url).catch(err => console.error(err));
+  function calculateCost(sec) {
+    let hours = sec / 3600;
+    let kwh = (WATT * hours) / 1000;
+    let cost = Math.ceil(kwh * TARIF);
+    
+    document.getElementById('time-st').innerText = sec.toFixed(1);
+    document.getElementById('cost-st').innerText = cost;
+  }
+
+  function updateUI() {
+    let d = document.getElementById('door-st');
+    let l = document.getElementById('light-st');
+    
+    d.innerText = isDoorOpen ? "TERBUKA" : "TERTUTUP";
+    d.className = isDoorOpen ? "active" : "inactive";
+    
+    l.innerText = isLightOn ? "MENYALA" : "MATI";
+    l.className = isLightOn ? "active" : "inactive";
+  }
+
+  function stopSystem() {
+    systemRunning = false;
+    if(isLightOn) addDuration();
+    if(arduinoReady) { serial.write('C'); serial.write('D'); }
+    
+    let t = document.getElementById('time-st').innerText;
+    let c = document.getElementById('cost-st').innerText;
+    sendTelegram(`🛑 LAPORAN TUTUP.%0ADurasi: ${t} detik%0ABiaya: Rp ${c}`);
+    alert("Sistem Berhenti.");
+  }
+
+  function sendTelegram(txt) {
+    fetch(`https://api.telegram.org/bot${8227143038:AAH6f9KMkD7GU3ZVAfl3E0y2zYG51LyUYTo}/sendMessage?chat_id=${275146230 }&text=${txt}`);
   }
 </script>
 
