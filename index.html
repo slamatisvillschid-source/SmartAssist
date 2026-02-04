@@ -3,232 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Assistive Door & Energy System</title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;500;700&display=swap" rel="stylesheet">
+    <title>Sistem Kontrol Teachable Machine</title>
     <style>
-        body {
-            font-family: 'Roboto', sans-serif;
-            background-color: #f0f2f5;
-            color: #333;
-            text-align: center;
-            margin: 0;
-            padding: 20px;
-        }
-
-        h1 {
-            color: #2c3e50;
-            margin-bottom: 10px;
-        }
-
-        /* Setup Layout */
-        .container {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 20px;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        /* Kartu Kamera */
-        .card {
-            background: white;
-            border-radius: 15px;
-            padding: 20px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            flex: 1;
-            min-width: 300px;
-        }
-
-        #webcam-container {
-            border-radius: 10px;
-            overflow: hidden;
-            margin-bottom: 10px;
-            border: 3px solid #eee;
-        }
-        
-        canvas {
-            width: 100%;
-            height: auto;
-        }
-
-        /* Dashboard Status */
-        .status-panel {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-        }
-
-        .status-item {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 10px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            transition: all 0.3s ease;
-        }
-
-        .icon {
-            font-size: 3rem;
-            margin-bottom: 10px;
-        }
-
-        .label {
-            font-weight: bold;
-            font-size: 1.1rem;
-        }
-
-        .state {
-            font-size: 0.9rem;
-            color: #666;
-        }
-
-        /* Indikator Probabilitas */
-        #label-container div {
-            margin: 5px 0;
-            background: #eee;
-            border-radius: 5px;
-            padding: 5px 10px;
-            text-align: left;
-            font-size: 0.85rem;
-        }
-
-        /* Input URL Model */
-        .setup-box {
-            margin-bottom: 20px;
-            background: #e3f2fd;
-            padding: 15px;
-            border-radius: 8px;
-            display: inline-block;
-        }
-
-        input[type="text"] {
-            padding: 8px;
-            width: 300px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-
-        button {
-            padding: 8px 15px;
-            background: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background: #0056b3;
-        }
-
-        /* Styles Dinamis (Aktif) */
-        .active-door { background-color: #d4edda; border: 2px solid #28a745; }
-        .active-light { background-color: #fff3cd; border: 2px solid #ffc107; }
-        .active-security { background-color: #cce5ff; border: 2px solid #007bff; }
-        .alert-security { background-color: #f8d7da; border: 2px solid #dc3545; animation: pulse 1s infinite; }
-
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.02); }
-            100% { transform: scale(1); }
-        }
+        body { font-family: sans-serif; text-align: center; background: #f4f4f9; padding: 20px; }
+        #webcam-container { margin: 20px auto; border: 5px solid #333; border-radius: 10px; width: max-content; }
+        #label-container { font-size: 24px; font-weight: bold; margin-top: 20px; color: #2c3e50; }
+        .status-card { padding: 20px; background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: inline-block; min-width: 300px; }
+        .action { color: #e74c3c; font-style: italic; }
     </style>
 </head>
 <body>
 
-    <h1>Smart Assistive Door & Energy System</h1>
-    <p>Simulasi Smart Home berbasis Computer Vision</p>
-
-    <div class="setup-box" id="setup-area">
-        <label>Masukkan URL Model Teachable Machine:</label><br>
-        <input type="text" id="model-url" placeholder="https://teachablemachine.withgoogle.com/models/1TcxLgfyoh/">
-        <button type="button" onclick="init()">Mulai Sistem</button>
-        <p style="font-size: 0.8rem; margin-top:5px;">Pastikan model memiliki kelas: Pemilik, Membuka Pintu, Menyalakan Lampu, Kosong, Orang Lain</p>
+    <h2>AI Smart Control System</h2>
+    <div class="status-card">
+        <button type="button" onclick="init()">Mulai Kamera</button>
+        <div id="webcam-container"></div>
+        <div id="label-container">Menunggu kamera...</div>
+        <p id="action-msg" class="action"></p>
     </div>
 
-    <div class="container" id="main-interface" style="display:none;">
-        <div class="card">
-            <h3>Monitoring Kamera</h3>
-            <div id="webcam-container"></div>
-            <div id="label-container"></div>
-        </div>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
 
-        <div class="card">
-            <h3>Panel Kontrol</h3>
-            <div id="current-action" style="font-weight:bold; color:#007bff; margin-bottom:15px; min-height: 1.2em;">Menunggu Input...</div>
-            
-            <div class="status-panel">
-                <div class="status-item" id="door-panel">
-                    <div class="icon" id="door-icon">🚪</div>
-                    <div class="label">Pintu Utama</div>
-                    <div class="state" id="door-state">Terkunci</div>
-                </div>
-
-                <div class="status-item" id="light-panel">
-                    <div class="icon" id="light-icon">💡</div>
-                    <div class="label">Pencahayaan</div>
-                    <div class="state" id="light-state">Mati</div>
-                </div>
-
-                <div class="status-item" id="security-panel">
-                    <div class="icon" id="security-icon">🛡️</div>
-                    <div class="label">Keamanan</div>
-                    <div class="state" id="security-state">Standby</div>
-                </div>
-
-                <div class="status-item">
-                    <div class="icon" id="user-icon">👤</div>
-                    <div class="label">Deteksi</div>
-                    <div class="state" id="user-state">-</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
-    
     <script type="text/javascript">
+        // Ganti URL ini dengan link model yang Anda dapatkan dari Teachable Machine
+        const URL = "https://teachablemachine.withgoogle.com/models/1TcxLgfyoh/";
+
         let model, webcam, labelContainer, maxPredictions;
 
-        // Fungsi inisialisasi
         async function init() {
-            const urlInput = document.getElementById('model-url').value;
-            if (!urlInput) {
-                alert("Mohon masukkan URL model terlebih dahulu!");
-                return;
-            }
-
-            const URL = urlInput;
             const modelURL = URL + "model.json";
             const metadataURL = URL + "metadata.json";
 
-            try {
-                // Load model
-                model = await tmImage.load(modelURL, metadataURL);
-                maxPredictions = model.getTotalClasses();
+            model = await tmImage.load(modelURL, metadataURL);
+            maxPredictions = model.getTotalClasses();
 
-                // Setup Webcam
-                const flip = true; 
-                webcam = new tmImage.Webcam(300, 300, flip); 
-                await webcam.setup(); 
-                await webcam.play();
-                window.requestAnimationFrame(loop);
+            const flip = true; 
+            webcam = new tmImage.Webcam(300, 300, flip); 
+            await webcam.setup(); 
+            await webcam.play();
+            window.requestAnimationFrame(loop);
 
-                // Update DOM
-                document.getElementById('setup-area').style.display = 'none';
-                document.getElementById('main-interface').style.display = 'flex';
-                document.getElementById("webcam-container").appendChild(webcam.canvas);
-                labelContainer = document.getElementById("label-container");
-                for (let i = 0; i < maxPredictions; i++) {
-                    labelContainer.appendChild(document.createElement("div"));
-                }
-            } catch (e) {
-                alert("Gagal memuat model. Pastikan URL benar dan izin kamera aktif.");
-                console.error(e);
-            }
+            document.getElementById("webcam-container").appendChild(webcam.canvas);
+            labelContainer = document.getElementById("label-container");
         }
 
         async function loop() {
@@ -237,97 +54,42 @@
             window.requestAnimationFrame(loop);
         }
 
-        // Fungsi Prediksi
         async function predict() {
             const prediction = await model.predict(webcam.canvas);
             
+            // Mencari hasil prediksi dengan probabilitas tertinggi
             let highestProb = 0;
-            let bestClass = "";
+            let bestMatch = "";
 
             for (let i = 0; i < maxPredictions; i++) {
-                const classPrediction = prediction[i].className + ": " + prediction[i].probability.toFixed(2);
-                labelContainer.childNodes[i].innerHTML = classPrediction;
-
-                // Cari probabilitas tertinggi
                 if (prediction[i].probability > highestProb) {
                     highestProb = prediction[i].probability;
-                    bestClass = prediction[i].className;
+                    bestMatch = prediction[i].className;
                 }
             }
 
-            // Jalankan logika Smart Home jika akurasi di atas 85%
-            if (highestProb > 0.85) {
-                updateSmartHome(bestClass);
-            } else {
-                // Jika tidak yakin, jangan lakukan aksi drastis
-                document.getElementById("current-action").innerText = "Menganalisis...";
-            }
-        }
+            // Logika Respon Berdasarkan Kelas Anda
+            const msg = document.getElementById("action-msg");
+            labelContainer.innerHTML = "Terdeteksi: " + bestMatch;
 
-        // LOGIKA UTAMA SMART HOME
-        function updateSmartHome(className) {
-            // Reset visual ke default dulu (opsional, tergantung preferensi UX)
-            // Di sini kita biarkan state bertahan sampai berubah lagi
-            
-            const doorPanel = document.getElementById('door-panel');
-            const lightPanel = document.getElementById('light-panel');
-            const securityPanel = document.getElementById('security-panel');
-            
-            const doorState = document.getElementById('door-state');
-            const lightState = document.getElementById('light-state');
-            const securityState = document.getElementById('security-state');
-            const userState = document.getElementById('user-state');
-            const actionText = document.getElementById('current-action');
-
-            // Reset Kelas CSS
-            doorPanel.className = "status-item";
-            lightPanel.className = "status-item";
-            securityPanel.className = "status-item";
-
-            switch (className) {
+            switch(bestMatch) {
                 case "Pemilik":
-                    actionText.innerText = "Pemilik Terdeteksi. Akses Diberikan.";
-                    securityPanel.classList.add("active-security");
-                    securityState.innerText = "Aman (Pemilik)";
-                    document.getElementById('security-icon').innerText = "✅";
-                    userState.innerText = "Pemilik";
+                    msg.innerHTML = "Selamat Datang, Bos!";
                     break;
-
                 case "Membuka Pintu":
-                    actionText.innerText = "Perintah Membuka Pintu Diterima.";
-                    doorPanel.classList.add("active-door");
-                    doorState.innerText = "Terbuka";
-                    document.getElementById('door-icon').innerText = "🚪🔓"; // Pintu terbuka
+                    msg.innerHTML = "🔓 Akses Diberikan: Pintu Terbuka";
                     break;
-
                 case "Menyalakan Lampu":
-                    actionText.innerText = "Perintah Menyalakan Lampu Diterima.";
-                    lightPanel.classList.add("active-light");
-                    lightState.innerText = "Menyala";
-                    document.getElementById('light-icon').innerText = "💡✨"; // Lampu bersinar
+                    msg.innerHTML = "💡 Perintah Diterima: Lampu Menyala";
                     break;
-
                 case "Orang Lain":
-                    actionText.innerText = "PERINGATAN: Orang Tidak Dikenal!";
-                    securityPanel.classList.add("alert-security");
-                    securityState.innerText = "BAHAYA / WASPADA";
-                    document.getElementById('security-icon').innerText = "🚨";
-                    
-                    // Otomatis kunci pintu jika orang asing
-                    doorState.innerText = "Terkunci (Auto)";
-                    document.getElementById('door-icon').innerText = "🚪🔒";
-                    userState.innerText = "Asing";
+                    msg.innerHTML = "⚠️ Peringatan: Akses Ditolak!";
                     break;
-
                 case "Kosong":
-                    actionText.innerText = "Ruangan Kosong / Standby.";
-                    userState.innerText = "Tidak Ada";
-                    securityState.innerText = "Monitoring";
-                    document.getElementById('security-icon').innerText = "🛡️";
+                    msg.innerHTML = "Menunggu subjek...";
                     break;
-
                 default:
-                    actionText.innerText = "Menunggu...";
+                    msg.innerHTML = "";
             }
         }
     </script>
