@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Smart Assistive Control</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
+  <script src="https://unpkg.com/ml5@latest/dist/ml5.min.js"></script>
+  <script src="https://unpkg.com/p5.webserial/dist/p5.webserial.js"></script> 
+  
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
+    .container { display: flex; gap: 20px; }
+    .status-box { background: white; padding: 20px; border-radius: 10px; width: 300px; }
+    .control-box { background: #e0e0ff; padding: 20px; border-radius: 10px; margin-top: 20px;}
+    button { padding: 10px; cursor: pointer; }
+    input { width: 100%; margin-bottom: 10px; padding: 5px; }
+  </style>
+</head>
+
+<body>
+  <h2>Sistem Kontrol Disabilitas Berbasis Gestur</h2>
+  
+  <div class="container">
+    <div id="canvas-container"></div>
+
+    <div>
+      <div class="status-box">
+        <h3>Status Real-time</h3>
+        <p>Deteksi: <b id="label-status">Menunggu...</b></p>
+        <p>Pintu: <span id="door-status" style="color:red">TERTUTUP</span></p>
+        <p>Lampu: <span id="light-status" style="color:red">MATI</span></p>
+        <hr>
+        <p>Durasi Lampu Nyala: <b id="duration-txt">0 detik</b></p>
+        <p>Estimasi Biaya: Rp <b id="cost-txt">0</b></p>
+        <button onclick="connectSerial()">Sambungkan Arduino</button>
+      </div>
+
+      <div class="control-box">
+        <h3>Pengaturan Telegram</h3>
+        <input type="text" id="botToken" placeholder="Masukkan Token Bot Telegram">
+        <input type="text" id="chatId" placeholder="Masukkan Chat ID">
+        <button onclick="sendReport()">Kirim Laporan ke Telegram</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // --- KONFIGURASI ---
+  // GANTI LINK INI DENGAN LINK MODEL TEACHABLE MACHINE ANDA
+  let classifier;
+  let imageModelURL = 'https://teachablemachine.withgoogle.com/models/1TcxLgfyoh/'; 
+  
+  let video;
+  let label = "";
+  let serial;
+  
+  // Variabel Logika
+  let isLightOn = false;
+  let isDoorOpen = false;
+  let doorTimer = 0;
+  let emptyRoomTimer = 0; // Timer untuk mendeteksi ruangan kosong
+  
+  // Variabel Kalkulasi Daya
+  let lightStartTime = 0;
+  let totalLightDuration = 0; // dalam detik
+  const wattLampu = 10; // Asumsi simulasi 10 Watt
+  const tarifListrik = 1444; // Rupiah per kWh (Contoh)
+
+  function preload() {
+    classifier = ml5.imageClassifier(imageModelURL + 'model.json');
+  }
+
+  function setup() {
+    let cnv = createCanvas(320, 240);
+    cnv.parent('canvas-container');
+    video = createCapture(VIDEO);
+    video.size(320, 240);
+    video.hide();
+    flippedVideo = ml5.flipImage(video);
+    classifyVideo();
+
+    // Setup Serial
+    serial = new p5.WebSerial();
+  }
+
+  function draw() {
+    background(0);
+    image(flippedVideo, 0, 0);
+    
+    // Update Teks Label di HTML
+    document.getElementById('label-status').innerText = label;
+
+    // --- LOGIKA UTAMA ---
+    
+    // 1. Logika BUKA PINTU (Gestur Buka Telapak)
+    if (label == "Buka_Pintu" && !isDoorOpen) {
+      serial.write('O'); // Kirim ke Arduino
+      isDoorOpen = true;
+      document.getElementById('door-status').innerText = "TERBUKA";
+      document.getElementById('door-status').style.color = "green";
+      doorTimer = millis(); // Mulai hitung waktu
+    }
+
+    // 2. Logika TUTUP PINTU OTOMATIS (Rule 4)
+    // Jika pintu terbuka lebih dari 5 detik (5000ms), tutup otomatis
+    if (isDoorOpen && millis() - doorTimer > 5000) {
+      serial.write('C'); // Kirim ke Arduino
+      isDoorOpen = false;
+      document.getElementById('door-status').innerText = "TERTUTUP";
+      document.getElementById('door-status').style.color = "red";
+    }
+
+    // 3. Logika NYALAKAN LAMPU (Gestur Kepal Tangan)
+    if (label == "Nyalakan_Lampu" && !isLightOn) {
+      serial.write('L');
+      isLightOn = true;
+      lightStartTime = millis(); // Catat waktu mulai
+      document.getElementById('light-status').innerText = "MENYALA";
+      document.getElementById('light-status').style.color = "green";
+    }
+
+    // 4. Logika MATIKAN LAMPU SAAT KELUAR (Rule 5)
+    // Jika terdeteksi "Kosong" terus menerus selama 3 detik
+    if (label == "Kosong") {
+      emptyRoomTimer++;
+    } else {
+      emptyRoomTimer = 0; // Reset jika ada orang
+    }
+
+    if (emptyRoomTimer > 100 && isLightOn) { // Asumsi 30-60 frame per detik
+      serial.write('D'); // Dark/Off
+      isLightOn = false;
+      // Tambahkan durasi terakhir ke total
+      totalLightDuration += (millis() - lightStartTime) / 1000;
+      document.getElementById('light-status').innerText = "MATI";
+      document.getElementById('light-status').style.color = "red";
+      emptyRoomTimer = 0;
+    }
+
+    // --- KALKULASI DAYA REALTIME ---
+    let currentSession = 0;
+    if (isLightOn) {
+      currentSession = (millis() - lightStartTime) / 1000;
+    }
+    let totalSeconds = totalLightDuration + currentSession;
+    
+    // Rumus: (Watt * Jam) / 1000 * Tarif
+    let hours = totalSeconds / 3600;
+    let kwh = (wattLampu * hours) / 1000;
+    let cost = kwh * tarifListrik;
+
+    document.getElementById('duration-txt').innerText = totalSeconds.toFixed(1) + " detik";
+    document.getElementById('cost-txt').innerText = cost.toFixed(4);
+  }
+
+  function classifyVideo() {
+    flippedVideo = ml5.flipImage(video);
+    classifier.classify(flippedVideo, gotResult);
+  }
+
+  function gotResult(error, results) {
+    if (error) { console.error(error); return; }
+    label = results[0].label;
+    classifyVideo();
+  }
+
+  // --- FUNGSI PENDUKUNG ---
+  
+  function connectSerial() {
+    if (!navigator.serial) { alert("Browser tidak support Serial Web API. Gunakan Chrome/Edge."); return;}
+    serial.requestPort(); // Meminta user memilih port COM
+  }
+
+  function sendReport() {
+    let token = document.getElementById('botToken').value;
+    let chatId = document.getElementById('chatId').value;
+    
+    if(!token || !chatId) { alert("Isi Token dan Chat ID dulu!"); return; }
+
+    let duration = document.getElementById('duration-txt').innerText;
+    let cost = document.getElementById('cost-txt').innerText;
+    
+    let message = `laporan Harian Smarthome:%0A- Status Pintu: ${isDoorOpen ? 'Terbuka' : 'Tertutup'}%0A- Status Lampu: ${isLightOn ? 'Nyala' : 'Mati'}%0A- Durasi Lampu: ${duration}%0A- Estimasi Biaya: Rp ${cost}`;
+
+    let url = `https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${message}`;
+
+    fetch(url)
+      .then(response => response.json())
+      .then(data => {
+        if(data.ok) alert("Laporan terkirim ke Telegram!");
+        else alert("Gagal kirim. Cek Token/ID.");
+      })
+      .catch(err => console.error(err));
+  }
+</script>
+</body>
+</html>
