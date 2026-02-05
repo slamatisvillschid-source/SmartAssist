@@ -14,58 +14,55 @@
         button { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: 0.3s; }
         .btn-camera { background: var(--primary); color: white; }
         .btn-connect { background: #475569; color: #94a3b8; cursor: not-allowed; }
-        .btn-connect.active { background: var(--success); color: white; cursor: pointer; }
+        .btn-connect.active { background: var(--success); color: white; cursor: pointer; box-shadow: 0 0 15px var(--success); }
 
         .control-card { background: #0f172a; padding: 20px; border-radius: 12px; border: 1px solid #334155; }
         .toggle-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         
         /* Main Display */
         .main-content { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
-        #canvas-wrapper { position: relative; border-radius: 20px; border: 6px solid #334155; background: #000; overflow: hidden; min-width: 640px; min-height: 480px; }
-        #status-label { margin-top: 20px; font-size: 2rem; font-weight: 800; color: #60a5fa; }
+        #canvas-wrapper { position: relative; border-radius: 20px; border: 6px solid #334155; background: #000; overflow: hidden; line-height: 0; }
+        #status-label { margin-top: 20px; font-size: 2rem; font-weight: 800; color: #60a5fa; text-transform: uppercase; }
         
-        #log { height: 150px; background: #000; border-radius: 8px; padding: 10px; font-family: monospace; font-size: 12px; color: #10b981; overflow-y: auto; border: 1px solid #334155; }
+        /* Log Box */
+        #log { height: 180px; background: #000; border-radius: 8px; padding: 12px; font-family: 'Courier New', monospace; font-size: 13px; color: #10b981; overflow-y: auto; border: 1px solid #334155; }
+        .log-entry { margin-bottom: 5px; border-left: 3px solid var(--primary); padding-left: 8px; }
 
-        /* Loader */
-        #loader { position: absolute; color: white; font-weight: bold; display: none; }
-
-        .switch { position: relative; width: 40px; height: 22px; pointer-events: none; opacity: 0.6; }
+        /* Custom Switch */
+        .switch { position: relative; width: 42px; height: 24px; pointer-events: none; }
         .switch input { opacity: 0; width: 0; height: 0; }
-        .slider { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #475569; transition: .4s; border-radius: 22px; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #475569; transition: .4s; border-radius: 24px; }
         input:checked + .slider { background: var(--success); }
-        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background: white; transition: .4s; border-radius: 50%; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background: white; transition: .4s; border-radius: 50%; }
         input:checked + .slider:before { transform: translateX(18px); }
     </style>
 </head>
 <body>
 
 <div class="sidebar">
-    <h2 style="margin:0; color: #60a5fa;">🛡️ COMMAND CENTER</h2>
+    <h2 style="margin:0; font-size: 1.2rem; color: #60a5fa;">🛡️SMART ASSIST CONTROL</h2>
     
     <div class="btn-group">
         <button class="btn-camera" id="start-btn" onclick="init()">Aktifkan Kamera</button>
-        <button id="conn-btn" class="btn-connect" onclick="connectSerial()" disabled>Hubungkan Arduino</button>
+        <button id="conn-btn" class="btn-connect" onclick="connectSerial()" disabled>Hubungkan Perangkat</button>
     </div>
 
     <div class="control-card">
         <div class="toggle-item">
-            <span>🔓 Status Pintu</span>
+            <span>🔓 Status Pintu (Servo)</span>
             <label class="switch"><input type="checkbox" id="pintu-status"><span class="slider"></span></label>
         </div>
         <div class="toggle-item">
-            <span>💡 Status Lampu</span>
+            <span>💡 Status Lampu (LED)</span>
             <label class="switch"><input type="checkbox" id="lampu-status"><span class="slider"></span></label>
         </div>
     </div>
 
-    <div id="log">Sistem Siap. Klik 'Aktifkan Kamera'...</div>
+    <div id="log">Sistem Siap...</div>
 </div>
 
 <div class="main-content">
-    <div id="canvas-wrapper">
-        <div id="loader">MENGINISIALISASI KAMERA...</div>
-        <canvas id="canvas"></canvas>
-    </div>
+    <div id="canvas-wrapper"><canvas id="canvas"></canvas></div>
     <div id="status-label">OFFLINE</div>
 </div>
 
@@ -73,138 +70,36 @@
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
 
 <script>
-    // Variabel tambahan untuk melacak status
-let lastLog = ""; 
-let lightActive = false;
-
-async function predict() {
-    if (!webcam.canvas) return;
-
-    const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
-    const prediction = await model.predict(posenetOutput);
-    
-    drawPose(pose);
-
-    let highest = { name: "", prob: 0 };
-    prediction.forEach(p => {
-        if(p.probability > highest.prob) highest = { name: p.className, prob: p.probability };
-    });
-
-    // Ambang batas deteksi 85%
-    if(highest.prob > 0.85) {
-        document.getElementById("status-label").innerText = highest.name;
-        processLogic(highest.name);
-    }
-}
-
-function processLogic(name) {
-    // 1. Verifikasi Pemilik (Sekali verifikasi tetap terbuka)
-    if(name === "Pemilik" && !isOwnerVerified) {
-        isOwnerVerified = true;
-        document.getElementById("conn-btn").disabled = false;
-        document.getElementById("conn-btn").classList.add("active");
-        addLog("Pemilik Terverifikasi. Akses Terbuka.");
-    }
-
-    if(!isOwnerVerified) return;
-
-    // 2. Logika Lampu: Nyala saat "Menyalakan Lampu", Mati saat "Kosong"
-    if(name === "Menyalakan Lampu") {
-        updateLight(true);
-    } 
-    else if(name === "Kosong") {
-        updateLight(false);
-    }
-
-    // 3. Logika Servo (Tetap dengan durasi 10 detik)
-    if(name === "Membuka Pintu" && !servoActive) {
-        updateDoor();
-    }
-}
-
-function updateLight(on) {
-    // Hanya kirim perintah dan ubah UI jika status BERUBAH
-    if(lightActive === on) return; 
-    
-    lightActive = on;
-    document.getElementById("lampu-status").checked = on;
-    sendSerial(on ? "LED_ON" : "LED_OFF");
-    addLog(on ? "Lampu Dinyalakan" : "Lampu Dimatikan (Status Kosong)");
-}
-
-function updateDoor() {
-    servoActive = true;
-    document.getElementById("pintu-status").checked = true;
-    sendSerial("SERVO_OPEN");
-    addLog("Membuka Pintu (Auto-close dalam 10 detik)");
-    
-    setTimeout(() => {
-        document.getElementById("pintu-status").checked = false;
-        sendSerial("SERVO_CLOSE");
-        addLog("Pintu Tertutup");
-        servoActive = false;
-    }, 10000);
-}
-
-function addLog(msg) {
-    // Filter Log: Hanya tampilkan jika pesan berbeda dari sebelumnya
-    if(msg === lastLog) return; 
-    
-    const logBox = document.getElementById("log");
-    const time = new Date().toLocaleTimeString();
-    logBox.innerHTML = `<div style="margin-bottom:4px;">[${time}] ${msg}</div>` + logBox.innerHTML;
-    lastLog = msg;
-}
-    // MASUKKAN URL MODEL ANDA DI SINI
+    // GANTI DENGAN URL MODEL POSE ANDA
     const URL = "https://teachablemachine.withgoogle.com/models/ZMNrCQrv8/"; 
     
     let model, webcam, ctx, writer, port;
     let isOwnerVerified = false;
-    let lastLog = "";
-    let servoActive = false;
-    let lightActive = false;
+    let lastLogMessage = "";
+    let isServoRunning = false;
+    let isLightOn = false;
 
     async function init() {
-        const startBtn = document.getElementById("start-btn");
-        const loader = document.getElementById("loader");
-        
         try {
-            startBtn.disabled = true;
-            startBtn.innerText = "Memproses...";
-            loader.style.display = "block";
-            addLog("Meminta akses kamera...");
-
-            // Inisialisasi Model
-            const modelURL = URL + "model.json";
-            const metadataURL = URL + "metadata.json";
-            model = await tmPose.load(modelURL, metadataURL);
+            document.getElementById("start-btn").disabled = true;
+            addLog("Mengunduh model AI...");
             
-            // Inisialisasi Webcam
-            const size = 640;
-            const flip = true;
-            webcam = new tmPose.Webcam(size, 480, flip);
+            model = await tmPose.load(URL + "model.json", URL + "metadata.json");
             
-            // WAJIB: Meminta izin browser secara eksplisit
-            await webcam.setup(); 
-            addLog("Izin kamera diberikan.");
-            
+            webcam = new tmPose.Webcam(640, 480, true);
+            await webcam.setup();
             await webcam.play();
-            loader.style.display = "none";
-            addLog("Kamera Aktif. Mulai memindai pose...");
-
+            
             window.requestAnimationFrame(loop);
-
+            
             const canvas = document.getElementById("canvas");
-            canvas.width = size; canvas.height = 480;
+            canvas.width = 640; canvas.height = 480;
             ctx = canvas.getContext("2d");
-
+            
+            addLog("Kamera Aktif. Menunggu deteksi Pemilik.");
         } catch (e) {
-            console.error(e);
-            addLog("❌ ERROR: " + e.message);
-            alert("Gagal mengakses kamera. Pastikan Anda menggunakan HTTPS atau Localhost dan izin kamera diaktifkan.");
-            startBtn.disabled = false;
-            startBtn.innerText = "Aktifkan Kamera";
-            loader.style.display = "none";
+            addLog("Gagal akses kamera: " + e.message);
+            document.getElementById("start-btn").disabled = false;
         }
     }
 
@@ -229,47 +124,54 @@ function addLog(msg) {
 
         if(highest.prob > 0.85) {
             document.getElementById("status-label").innerText = highest.name;
-            processLogic(highest.name);
-        } else {
-            if(lightActive) updateLight(false);
+            handleSystemLogic(highest.name);
         }
     }
 
-    // --- FUNGSI LOGIKA (Pintu & Lampu) SAMA SEPERTI SEBELUMNYA ---
-    function processLogic(name) {
-        if(name === "Pemilik" && !isOwnerVerified) {
+    function handleSystemLogic(detectedClass) {
+        // 1. Verifikasi Keamanan
+        if(detectedClass === "Pemilik" && !isOwnerVerified) {
             isOwnerVerified = true;
-            document.getElementById("conn-btn").disabled = false;
-            document.getElementById("conn-btn").classList.add("active");
-            addLog("Pemilik Terverifikasi.");
+            const btn = document.getElementById("conn-btn");
+            btn.disabled = false;
+            btn.classList.add("active");
+            addLog("Akses Terverifikasi: Selamat Datang Pemilik.");
         }
+
         if(!isOwnerVerified) return;
 
-        if(name === "Menyalakan Lampu") updateLight(true);
-        else updateLight(false);
+        // 2. Logika Lampu (Sticky ON -> OFF hanya saat Kosong)
+        if(detectedClass === "Menyalakan Lampu" && !isLightOn) {
+            toggleLight(true);
+        } 
+        else if(detectedClass === "Kosong" && isLightOn) {
+            toggleLight(false);
+        }
 
-        if(name === "Membuka Pintu" && !servoActive) updateDoor(true);
+        // 3. Logika Servo (10 Detik Non-blocking)
+        if(detectedClass === "Membuka Pintu" && !isServoRunning) {
+            openDoorProcess();
+        }
     }
 
-    function updateLight(on) {
-        if(lightActive === on) return;
-        lightActive = on;
-        document.getElementById("lampu-status").checked = on;
-        sendSerial(on ? "LED_ON" : "LED_OFF");
-        addLog(on ? "Lampu ON" : "Lampu OFF");
+    function toggleLight(status) {
+        isLightOn = status;
+        document.getElementById("lampu-status").checked = status;
+        sendSerial(status ? "LED_ON" : "LED_OFF");
+        addLog(status ? "Lampu dinyalakan (Sistem Lock)" : "Lampu dimatikan (Ruangan Kosong)");
     }
 
-    function updateDoor(on) {
-        servoActive = true;
+    function openDoorProcess() {
+        isServoRunning = true;
         document.getElementById("pintu-status").checked = true;
         sendSerial("SERVO_OPEN");
-        addLog("Pintu Terbuka (10 Detik)");
+        addLog("Membuka Pintu... (Auto-close aktif)");
         
         setTimeout(() => {
             document.getElementById("pintu-status").checked = false;
             sendSerial("SERVO_CLOSE");
-            addLog("Pintu Tertutup");
-            servoActive = false;
+            addLog("Pintu telah ditutup secara otomatis.");
+            isServoRunning = false;
         }, 10000);
     }
 
@@ -285,8 +187,8 @@ function addLog(msg) {
             port = await navigator.serial.requestPort();
             await port.open({ baudRate: 9600 });
             writer = port.writable.getWriter();
-            addLog("Arduino Terhubung.");
-        } catch (e) { addLog("Gagal Serial."); }
+            addLog("USB Arduino Terhubung!");
+        } catch (e) { addLog("Gagal Serial: " + e.message); }
     }
 
     async function sendSerial(msg) {
@@ -297,10 +199,13 @@ function addLog(msg) {
     }
 
     function addLog(msg) {
-        if(msg === lastLog) return;
+        // Hanya tampilkan log jika pesan berbeda dari yang terakhir
+        if(msg === lastLogMessage) return;
+        
         const logBox = document.getElementById("log");
-        logBox.innerHTML = `<div>[${new Date().toLocaleTimeString()}] ${msg}</div>` + logBox.innerHTML;
-        lastLog = msg;
+        const time = new Date().toLocaleTimeString('id-ID');
+        logBox.innerHTML = `<div class="log-entry"><strong>[${time}]</strong> ${msg}</div>` + logBox.innerHTML;
+        lastLogMessage = msg;
     }
 </script>
 </body>
