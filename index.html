@@ -7,7 +7,6 @@
         :root { --primary: #3b82f6; --danger: #ef4444; --success: #22c55e; --bg: #0f172a; --panel: #1e293b; }
         body { font-family: 'Inter', sans-serif; background: var(--bg); color: white; margin: 0; display: flex; height: 100vh; overflow: hidden; }
         
-        /* Sidebar */
         .sidebar { width: 380px; background: var(--panel); padding: 25px; border-right: 1px solid #334155; display: flex; flex-direction: column; gap: 15px; }
         .control-card { background: #0f172a; padding: 15px; border-radius: 12px; border: 1px solid #334155; }
         
@@ -18,11 +17,11 @@
 
         button { padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: 0.3s; width: 100%; }
         .btn-camera { background: var(--primary); color: white; margin-bottom: 5px; }
-        .btn-report { background: #9333ea; color: white; margin-top: 10px; }
+        .btn-report { background: #6366f1; color: white; margin-top: 10px; }
+        .btn-report.sent { background: #2563eb !important; } /* Warna Biru saat terkirim */
         .btn-connect { background: #475569; color: #94a3b8; cursor: not-allowed; }
-        .btn-connect.active { background: var(--success); color: white; cursor: pointer; box-shadow: 0 0 10px var(--success); }
+        .btn-connect.active { background: var(--success); color: white; cursor: pointer; }
 
-        /* Toggles */
         .toggle-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 0.9rem; }
         .switch { position: relative; width: 40px; height: 22px; pointer-events: none; }
         .switch input { opacity: 0; width: 0; height: 0; }
@@ -32,38 +31,33 @@
         input:checked + .slider:before { transform: translateX(18px); }
 
         #canvas-wrapper { position: relative; border-radius: 20px; border: 6px solid #334155; background: #000; overflow: hidden; line-height: 0; }
-        #status-label { margin-top: 20px; font-size: 1.8rem; font-weight: 800; color: #60a5fa; }
-        #log { height: 100px; background: #000; border-radius: 8px; padding: 10px; font-family: monospace; font-size: 11px; color: #10b981; overflow-y: auto; border: 1px solid #334155; }
+        #status-label { margin-top: 20px; font-size: 1.8rem; font-weight: 800; color: #64748b; } /* Default warna abu */
+        #status-label.verified { color: #60a5fa; } /* Biru jika sudah verifikasi */
         
+        #log { height: 100px; background: #000; border-radius: 8px; padding: 10px; font-family: monospace; font-size: 11px; color: #10b981; overflow-y: auto; border: 1px solid #334155; }
         .main-content { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
     </style>
 </head>
 <body>
 
 <div class="sidebar">
-    <h2 style="margin:0; font-size: 1.2rem; color: #60a5fa;">🛡️ AI SMART HOME</h2>
+    <h2 style="margin:0; font-size: 1.2rem; color: #60a5fa;">🛡️ AI COMMAND CENTER</h2>
     
     <button class="btn-camera" id="start-btn" onclick="init()">Aktifkan Kamera</button>
     <button id="conn-btn" class="btn-connect" onclick="connectSerial()" disabled>Hubungkan Arduino</button>
 
     <div class="control-card">
-        <div class="toggle-item">
-            <span>🔓 Pintu (Servo)</span>
-            <label class="switch"><input type="checkbox" id="pintu-status"><span class="slider"></span></label>
-        </div>
-        <div class="toggle-item">
-            <span>💡 Lampu (LED 10-13)</span>
-            <label class="switch"><input type="checkbox" id="lampu-status"><span class="slider"></span></label>
-        </div>
+        <div class="toggle-item"><span>🔓 Pintu (Servo)</span><label class="switch"><input type="checkbox" id="pintu-status"><span class="slider"></span></label></div>
+        <div class="toggle-item"><span>💡 Lampu (LED 10-13)</span><label class="switch"><input type="checkbox" id="lampu-status"><span class="slider"></span></label></div>
     </div>
 
     <div class="control-card">
-        <div class="stat-label">Efisiensi Energi (40W)</div>
+        <div class="stat-label">SMART ASSIST</div>
         <div class="stats-grid">
             <div class="stat-box"><span class="stat-val" id="timer-val">0s</span><span class="stat-label">Durasi</span></div>
             <div class="stat-box"><span class="stat-val" id="cost-val">Rp 0</span><span class="stat-label">Biaya</span></div>
         </div>
-        <button class="btn-report" onclick="sendTelegramReport()">📤 Kirim Laporan</button>
+        <button id="report-btn" class="btn-report" onclick="sendTelegramReport()">📤 Kirim Laporan</button>
     </div>
 
     <div id="log">Siap...</div>
@@ -71,7 +65,7 @@
 
 <div class="main-content">
     <div id="canvas-wrapper"><canvas id="canvas"></canvas></div>
-    <div id="status-label">OFFLINE</div>
+    <div id="status-label">MENUNGGU VERIFIKASI...</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
@@ -80,13 +74,12 @@
 <script>
     const URL = "https://teachablemachine.withgoogle.com/models/ZMNrCQrv8/"; 
     const TG_TOKEN = "8227143038:AAH6f9KMkD7GU3ZVAfl3E0y2zYG51LyUYTo";
-    const TG_CHAT_ID = "275146230 ";
+    const TG_CHAT_ID = "275146230";
 
     let model, webcam, ctx, writer;
     let isOwnerVerified = false;
     let lastLogMessage = "";
     
-    // State Tracking
     let lightStartTime = null;
     let totalSecondsActive = 0;
     let isServoRunning = false;
@@ -102,8 +95,8 @@
             const canvas = document.getElementById("canvas");
             canvas.width = 600; canvas.height = 450;
             ctx = canvas.getContext("2d");
-            addLog("MODE Aktif. Harap verifikasi Pemilik.");
-        } catch(e) { addLog("Error Kamera."); }
+            addLog("Kamera Aktif. Silahkan verifikasi Pemilik.");
+        } catch(e) { addLog("Gagal akses kamera."); }
     }
 
     async function loop() {
@@ -122,30 +115,43 @@
         let highest = { name: "", prob: 0 };
         prediction.forEach(p => { if(p.probability > highest.prob) highest = { name: p.className, prob: p.probability }; });
 
+        const labelElement = document.getElementById("status-label");
+
         if(highest.prob > 0.85) {
-            document.getElementById("status-label").innerText = highest.name;
-            handleLogic(highest.name);
+            // Logika Tampilan Label: Hanya muncul jika Pemilik sudah diverifikasi atau sedang memindai Pemilik
+            if (!isOwnerVerified) {
+                if (highest.name === "Pemilik") {
+                    labelElement.innerText = "PEMILIK TERDETEKSI";
+                    labelElement.classList.add("verified");
+                    handleLogic(highest.name);
+                } else {
+                    labelElement.innerText = "MENUNGGU VERIFIKASI...";
+                }
+            } else {
+                labelElement.innerText = highest.name;
+                handleLogic(highest.name);
+            }
         }
     }
 
     function handleLogic(name) {
-        // 1. Verifikasi Pemilik
         if(name === "Pemilik" && !isOwnerVerified) {
             isOwnerVerified = true;
-            document.getElementById("conn-btn").disabled = false;
-            document.getElementById("conn-btn").classList.add("active");
-            addLog("Pemilik Dikenali. Akses Dibuka.");
+            const btn = document.getElementById("conn-btn");
+            btn.disabled = false;
+            btn.classList.add("active");
+            addLog("Akses Dibuka. Perangkat diizinkan.");
         }
 
         if(!isOwnerVerified) return;
 
-        // 2. Logika Lampu (Sticky ON sampai Kosong)
+        // LOGIKA LAMPU: Nyala terus jika sudah sekali terdeteksi, mati HANYA saat Kosong
         if(name === "Menyalakan Lampu" && !isLightOn) {
             isLightOn = true;
             lightStartTime = Date.now();
             document.getElementById("lampu-status").checked = true;
             sendSerial("LED_ON");
-            addLog("Lampu Dinyalakan.");
+            addLog("Lampu Dinyalakan (Status Lock).");
         } 
         else if(name === "Kosong" && isLightOn) {
             let session = (Date.now() - lightStartTime) / 1000;
@@ -157,7 +163,6 @@
             addLog(`Lampu Dimatikan. Sesi: ${session.toFixed(1)}s`);
         }
 
-        // 3. Logika Pintu (Servo 10 Detik)
         if(name === "Membuka Pintu" && !isServoRunning) {
             openDoor();
         }
@@ -167,8 +172,7 @@
         isServoRunning = true;
         document.getElementById("pintu-status").checked = true;
         sendSerial("SERVO_OPEN");
-        addLog("Membuka Pintu (Auto-close 10s)");
-        
+        addLog("Membuka Pintu (10s)");
         setTimeout(() => {
             document.getElementById("pintu-status").checked = false;
             sendSerial("SERVO_CLOSE");
@@ -181,18 +185,29 @@
         let currentSession = (Date.now() - lightStartTime) / 1000;
         let total = totalSecondsActive + currentSession;
         document.getElementById("timer-val").innerText = Math.floor(total) + "s";
-        let kwh = (40 * (total / 3600)) / 1000;
-        let cost = kwh * 1444;
+        let cost = ((40 * (total / 3600)) / 1000) * 1444;
         document.getElementById("cost-val").innerText = "Rp " + cost.toFixed(2);
     }
 
     async function sendTelegramReport() {
+        const btn = document.getElementById("report-btn");
         const total = document.getElementById("timer-val").innerText;
         const cost = document.getElementById("cost-val").innerText;
-        const msg = `📊 *LAPORAN ENERGI*%0A⏱ Total Nyala: ${total}%0A💰 Est. Biaya: ${cost}%0A✅ Status: Aman`;
+        const msg = `📊 *LAPORAN ENERGI*%0A⏱ Total: ${total}%0A💰 Biaya: ${cost}`;
+        
         try {
             await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT_ID}&text=${msg}&parse_mode=Markdown`);
             addLog("Laporan Terkirim!");
+            
+            // Perubahan Warna Tombol
+            btn.classList.add("sent");
+            btn.innerText = "✅ TERKIRIM";
+            
+            setTimeout(() => {
+                btn.classList.remove("sent");
+                btn.innerText = "📤 Kirim Laporan";
+            }, 3000);
+            
         } catch (e) { addLog("Gagal kirim laporan."); }
     }
 
