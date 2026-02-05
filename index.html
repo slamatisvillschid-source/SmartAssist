@@ -73,6 +73,88 @@
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
 
 <script>
+    // Variabel tambahan untuk melacak status
+let lastLog = ""; 
+let lightActive = false;
+
+async function predict() {
+    if (!webcam.canvas) return;
+
+    const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
+    const prediction = await model.predict(posenetOutput);
+    
+    drawPose(pose);
+
+    let highest = { name: "", prob: 0 };
+    prediction.forEach(p => {
+        if(p.probability > highest.prob) highest = { name: p.className, prob: p.probability };
+    });
+
+    // Ambang batas deteksi 85%
+    if(highest.prob > 0.85) {
+        document.getElementById("status-label").innerText = highest.name;
+        processLogic(highest.name);
+    }
+}
+
+function processLogic(name) {
+    // 1. Verifikasi Pemilik (Sekali verifikasi tetap terbuka)
+    if(name === "Pemilik" && !isOwnerVerified) {
+        isOwnerVerified = true;
+        document.getElementById("conn-btn").disabled = false;
+        document.getElementById("conn-btn").classList.add("active");
+        addLog("Pemilik Terverifikasi. Akses Terbuka.");
+    }
+
+    if(!isOwnerVerified) return;
+
+    // 2. Logika Lampu: Nyala saat "Menyalakan Lampu", Mati saat "Kosong"
+    if(name === "Menyalakan Lampu") {
+        updateLight(true);
+    } 
+    else if(name === "Kosong") {
+        updateLight(false);
+    }
+
+    // 3. Logika Servo (Tetap dengan durasi 10 detik)
+    if(name === "Membuka Pintu" && !servoActive) {
+        updateDoor();
+    }
+}
+
+function updateLight(on) {
+    // Hanya kirim perintah dan ubah UI jika status BERUBAH
+    if(lightActive === on) return; 
+    
+    lightActive = on;
+    document.getElementById("lampu-status").checked = on;
+    sendSerial(on ? "LED_ON" : "LED_OFF");
+    addLog(on ? "Lampu Dinyalakan" : "Lampu Dimatikan (Status Kosong)");
+}
+
+function updateDoor() {
+    servoActive = true;
+    document.getElementById("pintu-status").checked = true;
+    sendSerial("SERVO_OPEN");
+    addLog("Membuka Pintu (Auto-close dalam 10 detik)");
+    
+    setTimeout(() => {
+        document.getElementById("pintu-status").checked = false;
+        sendSerial("SERVO_CLOSE");
+        addLog("Pintu Tertutup");
+        servoActive = false;
+    }, 10000);
+}
+
+function addLog(msg) {
+    // Filter Log: Hanya tampilkan jika pesan berbeda dari sebelumnya
+    if(msg === lastLog) return; 
+    
+    const logBox = document.getElementById("log");
+    const time = new Date().toLocaleTimeString();
+    logBox.innerHTML = `<div style="margin-bottom:4px;">[${time}] ${msg}</div>` + logBox.innerHTML;
+    lastLog = msg;
+}
     // MASUKKAN URL MODEL ANDA DI SINI
     const URL = "https://teachablemachine.withgoogle.com/models/ZMNrCQrv8/"; 
     
