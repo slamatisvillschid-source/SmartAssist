@@ -2,91 +2,98 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>AI Security Command Center</title>
+    <title>AI Pose Security System</title>
     <style>
         :root { --primary: #3b82f6; --danger: #ef4444; --success: #22c55e; --bg: #0f172a; --panel: #1e293b; }
         body { font-family: 'Inter', sans-serif; background: var(--bg); color: white; margin: 0; display: flex; height: 100vh; overflow: hidden; }
         
-        /* Sidebar Styles */
+        /* Sidebar */
         .sidebar { width: 380px; background: var(--panel); padding: 25px; border-right: 1px solid #334155; display: flex; flex-direction: column; gap: 20px; }
-        .btn-group { display: flex; gap: 10px; margin-bottom: 10px; }
+        .btn-group { display: flex; gap: 10px; }
         
         button { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: 0.3s; }
         .btn-camera { background: var(--primary); color: white; }
-        .btn-connect { background: #64748b; color: white; cursor: not-allowed; opacity: 0.5; }
-        .btn-connect.active { background: var(--success); cursor: pointer; opacity: 1; }
+        .btn-camera:hover { background: #2563eb; }
+        .btn-connect { background: #475569; color: #94a3b8; cursor: not-allowed; }
+        .btn-connect.active { background: var(--success); color: white; cursor: pointer; box-shadow: 0 0 15px var(--success); }
 
-        .control-card { background: #0f172a; padding: 15px; border-radius: 12px; border: 1px solid #334155; }
+        .control-card { background: #0f172a; padding: 20px; border-radius: 12px; border: 1px solid #334155; }
         .toggle-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         
-        /* Main Area Styles */
-        .main-content { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(circle, #1e293b 0%, #0f172a 100%); }
-        #webcam-wrapper { position: relative; border-radius: 20px; border: 8px solid #334155; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); overflow: hidden; }
-        #status-label { margin-top: 15px; font-size: 1.5rem; font-weight: 700; color: #60a5fa; text-transform: uppercase; letter-spacing: 2px; }
+        /* Main Display */
+        .main-content { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        #canvas-wrapper { position: relative; border-radius: 20px; border: 6px solid #334155; background: #000; line-height: 0; }
+        #status-label { margin-top: 20px; font-size: 2rem; font-weight: 800; color: #60a5fa; text-shadow: 0 0 10px rgba(96, 165, 250, 0.5); }
         
-        /* Notification Box */
-        #log { height: 150px; background: #000; border-radius: 8px; padding: 10px; font-family: 'Courier New', monospace; font-size: 12px; color: #10b981; overflow-y: auto; }
-        
-        /* Toggle Switch */
-        .switch { position: relative; width: 45px; height: 24px; }
+        /* Log & Toggles */
+        #log { height: 120px; background: #000; border-radius: 8px; padding: 10px; font-family: monospace; font-size: 12px; color: #10b981; overflow-y: auto; border: 1px solid #334155; }
+        .switch { position: relative; width: 40px; height: 22px; }
         .switch input { opacity: 0; width: 0; height: 0; }
-        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #475569; transition: .4s; border-radius: 24px; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #475569; transition: .4s; border-radius: 22px; }
         input:checked + .slider { background: var(--success); }
-        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background: white; transition: .4s; border-radius: 50%; }
-        input:checked + .slider:before { transform: translateX(21px); }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider:before { transform: translateX(18px); }
     </style>
 </head>
 <body>
 
 <div class="sidebar">
-    <h2 style="margin:0; color: #3b82f6;">CONTROL PANEL</h2>
+    <h2 style="margin:0; font-size: 1.2rem; letter-spacing: 1px;">⚙️ CONTROL PANEL</h2>
     
     <div class="btn-group">
         <button class="btn-camera" onclick="init()">Aktifkan Kamera</button>
-        <button id="conn-btn" class="btn-connect" onclick="connectSerial()" disabled>Hubungkan Arduino</button>
+        <button id="conn-btn" class="btn-connect" onclick="connectSerial()" disabled>Hubungkan Perangkat</button>
     </div>
 
     <div class="control-card">
         <div class="toggle-item">
-            <span>🔓 Auto Buka Pintu (Servo)</span>
+            <span>🔓 Auto Servo (Pintu)</span>
             <label class="switch"><input type="checkbox" id="pintu-toggle"><span class="slider"></span></label>
         </div>
         <div class="toggle-item">
-            <span>💡 Auto Lampu (LED 10-13)</span>
+            <span>💡 Auto LED (Lampu)</span>
             <label class="switch"><input type="checkbox" id="lampu-toggle"><span class="slider"></span></label>
         </div>
     </div>
 
-    <div id="log">Sistem Siap. Harap verifikasi identitas Pemilik...</div>
+    <div id="log">Sistem Siap. Menunggu pemindaian Pose...</div>
 </div>
 
 <div class="main-content">
-    <div id="webcam-wrapper">
-        <div id="webcam-container"></div>
+    <div id="canvas-wrapper">
+        <canvas id="canvas"></canvas>
     </div>
-    <div id="status-label">MEMINDAI...</div>
+    <div id="status-label">OFFLINE</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
 
 <script>
-    const URL = "https://teachablemachine.withgoogle.com/models/ZMNrCQrv8/";
+    const URL = "https://teachablemachine.withgoogle.com/models/ZMNrCQrv8/"; 
     const TELEGRAM_TOKEN = "8227143038:AAH6f9KMkD7GU3ZVAfl3E0y2zYG51LyUYTo";
-    const CHAT_ID = "275146230";
+    const CHAT_ID = "275146230 ";
     
-    let model, webcam, labelContainer, maxPredictions, port, writer;
-    let isOwner = false;
-    let lastAlertTime = 0;
+    let model, webcam, ctx, labelContainer, maxPredictions, port, writer;
+    let isOwnerVerified = false;
+    let alertLock = false;
 
     async function init() {
-        model = await tmImage.load(URL + "model.json", URL + "metadata.json");
+        const modelURL = URL + "model.json";
+        const metadataURL = URL + "metadata.json";
+
+        model = await tmPose.load(modelURL, metadataURL);
         maxPredictions = model.getTotalClasses();
-        webcam = new tmImage.Webcam(500, 400, true);
+
+        webcam = new tmPose.Webcam(640, 480, true); 
         await webcam.setup();
         await webcam.play();
-        document.getElementById("webcam-container").appendChild(webcam.canvas);
         window.requestAnimationFrame(loop);
+
+        const canvas = document.getElementById("canvas");
+        canvas.width = 640; canvas.height = 480;
+        ctx = canvas.getContext("2d");
+        addLog("Kamera Aktif. Silahkan berpose.");
     }
 
     async function loop() {
@@ -96,53 +103,70 @@
     }
 
     async function predict() {
-        const prediction = await model.predict(webcam.canvas);
-        let highest = { name: "", prob: 0 };
+        const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
+        const prediction = await model.predict(posenetOutput);
 
+        drawPose(pose);
+
+        let highest = { name: "", prob: 0 };
         prediction.forEach(p => {
             if(p.probability > highest.prob) highest = { name: p.className, prob: p.probability };
         });
 
-        if(highest.prob > 0.90) {
+        if(highest.prob > 0.85) {
             document.getElementById("status-label").innerText = highest.name;
-            handleLogic(highest.name);
+            processPose(highest.name);
         }
     }
 
-    function handleLogic(name) {
+    function drawPose(pose) {
+        if (webcam.canvas) {
+            ctx.drawImage(webcam.canvas, 0, 0);
+            if (pose) {
+                const minPartConfidence = 0.5;
+                tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
+                tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
+            }
+        }
+    }
+
+    function processPose(name) {
         const connBtn = document.getElementById("conn-btn");
-        
+
         if(name === "Pemilik") {
-            if(!isOwner) {
-                isOwner = true;
+            if(!isOwnerVerified) {
+                isOwnerVerified = true;
                 connBtn.disabled = false;
                 connBtn.classList.add("active");
-                addLog("Akses Pemilik Diterima. USB Diizinkan.");
-                speak("Selamat datang pemilik. Perangkat siap dihubungkan.");
+                speak("Pemilik terverifikasi. Koneksi Arduino diizinkan.");
+                addLog("Akses Terbuka: Pemilik Terdeteksi");
             }
         } 
         else if(name === "Orang Lain") {
-            triggerAlarm();
+            handleIntruder();
         }
 
-        // Action Logic
-        if(isOwner && writer) {
+        if(isOwnerVerified && writer) {
             if(name === "Membuka Pintu" && document.getElementById("pintu-toggle").checked) {
-                sendSerial("DOOR_OPEN");
+                sendSerial("SERVO_ON");
+                addLog("Aksi: Membuka Pintu...");
             }
             if(name === "Menyalakan Lampu" && document.getElementById("lampu-toggle").checked) {
-                sendSerial("LIGHTS_ON");
+                sendSerial("LEDS_ON");
+                addLog("Aksi: Menyalakan Semua Lampu...");
             }
         }
     }
 
-    function triggerAlarm() {
-        let now = Date.now();
-        if(now - lastAlertTime > 10000) { // Beri jeda 10 detik antar notifikasi
-            lastAlertTime = now;
-            addLog("⚠️ PERINGATAN: Orang Asing Terdeteksi!");
-            speak("Peringatan. Orang tidak dikenal terdeteksi.");
-            fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=⚠️ PERINGATAN: Ada orang asing di depan kamera!`);
+    function handleIntruder() {
+        if(!alertLock) {
+            alertLock = true;
+            addLog("⚠️ BAHAYA: Orang Asing Terdeteksi!");
+            speak("Peringatan, anda tidak dikenali. Notifikasi telah dikirim.");
+            
+            fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=⚠️ ALARM: Pose Orang Asing Terdeteksi!`);
+            
+            setTimeout(() => { alertLock = false; }, 15000); // Kunci alert selama 15 detik
         }
     }
 
@@ -157,14 +181,15 @@
             port = await navigator.serial.requestPort();
             await port.open({ baudRate: 9600 });
             writer = port.writable.getWriter();
-            addLog("Arduino Berhasil Terhubung!");
-        } catch (e) { addLog("Koneksi Gagal."); }
+            addLog("✅ Arduino Terhubung!");
+        } catch (e) { addLog("❌ Gagal Terhubung."); }
     }
 
     async function sendSerial(cmd) {
-        const data = new TextEncoder().encode(cmd + "\n");
-        await writer.write(data);
-        addLog("Kirim Perintah: " + cmd);
+        if(writer) {
+            const data = new TextEncoder().encode(cmd + "\n");
+            await writer.write(data);
+        }
     }
 
     function addLog(msg) {
