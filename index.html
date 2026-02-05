@@ -15,12 +15,16 @@
         .stat-val { display: block; font-size: 1.1rem; font-weight: bold; color: #60a5fa; }
         .stat-label { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; }
 
-        button { padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: 0.3s; width: 100%; }
-        .btn-camera { background: var(--primary); color: white; margin-bottom: 5px; }
+        button { padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: 0.3s; width: 100%; margin-bottom: 5px; }
+        .btn-camera { background: var(--primary); color: white; }
         .btn-report { background: #6366f1; color: white; margin-top: 10px; }
-        .btn-report.sent { background: #2563eb !important; } /* Warna Biru saat terkirim */
+        .btn-report.sent { background: #2563eb !important; }
+        .btn-reset { background: var(--danger); color: white; font-size: 0.8rem; padding: 8px; margin-top: 5px; }
         .btn-connect { background: #475569; color: #94a3b8; cursor: not-allowed; }
         .btn-connect.active { background: var(--success); color: white; cursor: pointer; }
+
+        .serial-status { font-size: 0.8rem; padding: 8px; border-radius: 6px; background: #000; color: #94a3b8; margin-top: 5px; text-align: center; border: 1px solid #334155; }
+        .serial-active { color: var(--success); border-color: var(--success); }
 
         .toggle-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 0.9rem; }
         .switch { position: relative; width: 40px; height: 22px; pointer-events: none; }
@@ -31,8 +35,8 @@
         input:checked + .slider:before { transform: translateX(18px); }
 
         #canvas-wrapper { position: relative; border-radius: 20px; border: 6px solid #334155; background: #000; overflow: hidden; line-height: 0; }
-        #status-label { margin-top: 20px; font-size: 1.8rem; font-weight: 800; color: #64748b; } /* Default warna abu */
-        #status-label.verified { color: #60a5fa; } /* Biru jika sudah verifikasi */
+        #status-label { margin-top: 20px; font-size: 1.8rem; font-weight: 800; color: #64748b; text-align: center; }
+        #status-label.verified { color: #60a5fa; }
         
         #log { height: 100px; background: #000; border-radius: 8px; padding: 10px; font-family: monospace; font-size: 11px; color: #10b981; overflow-y: auto; border: 1px solid #334155; }
         .main-content { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -41,10 +45,11 @@
 <body>
 
 <div class="sidebar">
-    <h2 style="margin:0; font-size: 1.2rem; color: #60a5fa;">🛡️ AI COMMAND CENTER</h2>
+    <h2 style="margin:0; font-size: 1.2rem; color: #60a5fa;">🛡️ AI SMART DASHBOARD</h2>
     
     <button class="btn-camera" id="start-btn" onclick="init()">Aktifkan Kamera</button>
     <button id="conn-btn" class="btn-connect" onclick="connectSerial()" disabled>Hubungkan Arduino</button>
+    <div id="serial-info" class="serial-status">Status Serial: Terputus</div>
 
     <div class="control-card">
         <div class="toggle-item"><span>🔓 Pintu (Servo)</span><label class="switch"><input type="checkbox" id="pintu-status"><span class="slider"></span></label></div>
@@ -52,12 +57,13 @@
     </div>
 
     <div class="control-card">
-        <div class="stat-label">SMART ASSIST</div>
+        <div class="stat-label">SMART ASSIRT</div>
         <div class="stats-grid">
             <div class="stat-box"><span class="stat-val" id="timer-val">0s</span><span class="stat-label">Durasi</span></div>
             <div class="stat-box"><span class="stat-val" id="cost-val">Rp 0</span><span class="stat-label">Biaya</span></div>
         </div>
         <button id="report-btn" class="btn-report" onclick="sendTelegramReport()">📤 Kirim Laporan</button>
+        <button class="btn-reset" onclick="resetEnergy()">🔄 Reset Perhitungan</button>
     </div>
 
     <div id="log">Siap...</div>
@@ -72,11 +78,12 @@
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
 
 <script>
+    // GANTI URL INI DENGAN URL MODEL ANDA
     const URL = "https://teachablemachine.withgoogle.com/models/ZMNrCQrv8/"; 
     const TG_TOKEN = "8227143038:AAH6f9KMkD7GU3ZVAfl3E0y2zYG51LyUYTo";
     const TG_CHAT_ID = "275146230";
 
-    let model, webcam, ctx, writer;
+    let model, webcam, ctx, writer, port;
     let isOwnerVerified = false;
     let lastLogMessage = "";
     
@@ -95,13 +102,13 @@
             const canvas = document.getElementById("canvas");
             canvas.width = 600; canvas.height = 450;
             ctx = canvas.getContext("2d");
-            addLog("Kamera Aktif. Silahkan verifikasi Pemilik.");
-        } catch(e) { addLog("Gagal akses kamera."); }
+            addLog("Kamera Aktif.");
+        } catch(e) { addLog("Error Kamera."); }
     }
 
     async function loop() {
         webcam.update();
-        if (lightStartTime) updateEnergyCounter();
+        if (isLightOn && lightStartTime) updateEnergyCounter();
         await predict();
         window.requestAnimationFrame(loop);
     }
@@ -118,7 +125,6 @@
         const labelElement = document.getElementById("status-label");
 
         if(highest.prob > 0.85) {
-            // Logika Tampilan Label: Hanya muncul jika Pemilik sudah diverifikasi atau sedang memindai Pemilik
             if (!isOwnerVerified) {
                 if (highest.name === "Pemilik") {
                     labelElement.innerText = "PEMILIK TERDETEKSI";
@@ -137,21 +143,20 @@
     function handleLogic(name) {
         if(name === "Pemilik" && !isOwnerVerified) {
             isOwnerVerified = true;
-            const btn = document.getElementById("conn-btn");
-            btn.disabled = false;
-            btn.classList.add("active");
-            addLog("Akses Dibuka. Perangkat diizinkan.");
+            document.getElementById("conn-btn").disabled = false;
+            document.getElementById("conn-btn").classList.add("active");
+            addLog("Akses Dibuka.");
         }
 
         if(!isOwnerVerified) return;
 
-        // LOGIKA LAMPU: Nyala terus jika sudah sekali terdeteksi, mati HANYA saat Kosong
+        // PERBAIKAN LOGIKA LED: ON jika "Menyalakan Lampu", OFF hanya jika "Kosong"
         if(name === "Menyalakan Lampu" && !isLightOn) {
             isLightOn = true;
             lightStartTime = Date.now();
             document.getElementById("lampu-status").checked = true;
             sendSerial("LED_ON");
-            addLog("Lampu Dinyalakan (Status Lock).");
+            addLog("Lampu Aktif.");
         } 
         else if(name === "Kosong" && isLightOn) {
             let session = (Date.now() - lightStartTime) / 1000;
@@ -160,7 +165,7 @@
             isLightOn = false;
             document.getElementById("lampu-status").checked = false;
             sendSerial("LED_OFF");
-            addLog(`Lampu Dimatikan. Sesi: ${session.toFixed(1)}s`);
+            addLog(`Lampu Mati. Durasi Sesi: ${session.toFixed(1)}s`);
         }
 
         if(name === "Membuka Pintu" && !isServoRunning) {
@@ -172,11 +177,11 @@
         isServoRunning = true;
         document.getElementById("pintu-status").checked = true;
         sendSerial("SERVO_OPEN");
-        addLog("Membuka Pintu (10s)");
+        addLog("Pintu Terbuka.");
         setTimeout(() => {
             document.getElementById("pintu-status").checked = false;
             sendSerial("SERVO_CLOSE");
-            addLog("Pintu Ditutup.");
+            addLog("Pintu Tertutup.");
             isServoRunning = false;
         }, 10000);
     }
@@ -189,6 +194,14 @@
         document.getElementById("cost-val").innerText = "Rp " + cost.toFixed(2);
     }
 
+    function resetEnergy() {
+        totalSecondsActive = 0;
+        lightStartTime = isLightOn ? Date.now() : null;
+        document.getElementById("timer-val").innerText = "0s";
+        document.getElementById("cost-val").innerText = "Rp 0";
+        addLog("Perhitungan Energi direset.");
+    }
+
     async function sendTelegramReport() {
         const btn = document.getElementById("report-btn");
         const total = document.getElementById("timer-val").innerText;
@@ -198,22 +211,35 @@
         try {
             await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT_ID}&text=${msg}&parse_mode=Markdown`);
             addLog("Laporan Terkirim!");
-            
-            // Perubahan Warna Tombol
             btn.classList.add("sent");
             btn.innerText = "✅ TERKIRIM";
-            
             setTimeout(() => {
                 btn.classList.remove("sent");
                 btn.innerText = "📤 Kirim Laporan";
             }, 3000);
-            
-        } catch (e) { addLog("Gagal kirim laporan."); }
+        } catch (e) { addLog("Gagal kirim Telegram."); }
+    }
+
+    async function connectSerial() {
+        try {
+            port = await navigator.serial.requestPort();
+            await port.open({ baudRate: 9600 });
+            writer = port.writable.getWriter();
+            const info = document.getElementById("serial-info");
+            info.innerText = "Status Serial: Terhubung ✅";
+            info.classList.add("serial-active");
+            addLog("Arduino Connect!");
+        } catch (e) { addLog("Serial Gagal."); }
+    }
+
+    async function sendSerial(m) {
+        if(writer) {
+            const data = new TextEncoder().encode(m + "\n");
+            await writer.write(data);
+        }
     }
 
     function drawPose(pose) { ctx.drawImage(webcam.canvas, 0, 0); if (pose) tmPose.drawSkeleton(pose.keypoints, 0.5, ctx); }
-    async function connectSerial() { try { const port = await navigator.serial.requestPort(); await port.open({ baudRate: 9600 }); writer = port.writable.getWriter(); addLog("USB Connect!"); } catch(e) {} }
-    async function sendSerial(m) { if(writer) writer.write(new TextEncoder().encode(m + "\n")); }
     function addLog(m) { if(m !== lastLogMessage) { const b = document.getElementById("log"); b.innerHTML = `> ${m}<br>` + b.innerHTML; lastLogMessage = m; } }
 </script>
 </body>
